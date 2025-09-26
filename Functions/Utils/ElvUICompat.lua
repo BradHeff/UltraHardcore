@@ -825,16 +825,34 @@ function HideElvUINameplates()
         end
     end
 
-    -- Also try to hide via ElvUI API if available
+    -- Store original ElvUI nameplate settings
+    if not elvUIFramesHidden.originalNameplateConfig then
+        elvUIFramesHidden.originalNameplateConfig = {}
+    end
+
+    -- Comprehensive ElvUI nameplate hiding via API
     if ElvUI and ElvUI[1] then
         local E = ElvUI[1]
 
         -- Hide nameplates module if available
         if E.NamePlates then
-            -- Disable ElvUI nameplates
+            -- Store and disable ElvUI nameplates completely
             if E.private and E.private.nameplates then
+                elvUIFramesHidden.originalNameplateConfig.enable = E.private.nameplates.enable
                 E.private.nameplates.enable = false
                 table.insert(hiddenFrames, "API:nameplates.enable")
+            end
+
+            -- Disable ElvUI nameplate database settings
+            if E.db and E.db.nameplates then
+                elvUIFramesHidden.originalNameplateConfig.dbEnable = E.db.nameplates.enable
+                E.db.nameplates.enable = false
+                table.insert(hiddenFrames, "API:db.nameplates.enable")
+            end
+
+            -- Force hide the nameplate module
+            if E.NamePlates.DisableBlizzard then
+                pcall(E.NamePlates.DisableBlizzard, E.NamePlates)
             end
 
             -- Hide nameplate frames if available
@@ -846,6 +864,59 @@ function HideElvUINameplates()
                 end
                 E.NamePlates.frame:Hide()
                 table.insert(hiddenFrames, "API:NamePlates.frame")
+            end
+
+            -- Hide any active nameplate units
+            if E.NamePlates.CreatedPlates then
+                for plate, _ in pairs(E.NamePlates.CreatedPlates) do
+                    if plate and plate.Hide then
+                        if not plate.originalShow then
+                            plate.originalShow = plate.Show
+                            plate.Show = function()
+                            end
+                        end
+                        plate:Hide()
+                    end
+                end
+                table.insert(hiddenFrames, "API:CreatedPlates")
+            end
+        end
+
+        -- Also hide via Layout module if available
+        if E.Layout and E.Layout.ToggleNameplates then
+            pcall(E.Layout.ToggleNameplates, E.Layout, false)
+            table.insert(hiddenFrames, "API:Layout.ToggleNameplates")
+        end
+    end
+
+    -- Scan for any remaining nameplate frames globally
+    for frameName, frame in pairs(_G) do
+        if type(frame) == "table" and frame.Hide then
+            local lowerName = string.lower(frameName)
+            if (string.find(lowerName, "nameplate") or
+                (string.find(lowerName, "elvui") and string.find(lowerName, "plate"))) and
+                not string.find(lowerName, "tooltip") and not string.find(lowerName, "button") then
+
+                -- Check if we haven't already processed this frame
+                local alreadyHidden = false
+                for _, existingFrame in ipairs(hiddenFrames) do
+                    if existingFrame == frameName then
+                        alreadyHidden = true
+                        break
+                    end
+                end
+
+                if not alreadyHidden then
+                    if not frame.originalShow and frame.Show then
+                        frame.originalShow = frame.Show
+                        frame.Show = function()
+                        end
+                    end
+                    if frame.Hide then
+                        frame:Hide()
+                        table.insert(hiddenFrames, frameName)
+                    end
+                end
             end
         end
     end
@@ -864,14 +935,29 @@ function ShowElvUINameplates()
         return
     end -- Not hidden by us
 
+    -- Restore original ElvUI nameplate configurations
+    if elvUIFramesHidden.originalNameplateConfig then
+        local E = ElvUI[1]
+        if E then
+            -- Restore private settings
+            if elvUIFramesHidden.originalNameplateConfig.enable ~= nil and E.private and E.private.nameplates then
+                E.private.nameplates.enable = elvUIFramesHidden.originalNameplateConfig.enable
+            end
+
+            -- Restore database settings
+            if elvUIFramesHidden.originalNameplateConfig.dbEnable ~= nil and E.db and E.db.nameplates then
+                E.db.nameplates.enable = elvUIFramesHidden.originalNameplateConfig.dbEnable
+            end
+        end
+    end
+
     -- Restore frames that were hidden
     if type(elvUIFramesHidden.nameplates) == "table" then
         for _, frameName in ipairs(elvUIFramesHidden.nameplates) do
             if frameName == "API:nameplates.enable" then
-                -- Re-enable ElvUI nameplates
-                if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.nameplates then
-                    ElvUI[1].private.nameplates.enable = true
-                end
+                -- Already handled above in originalNameplateConfig restoration
+            elseif frameName == "API:db.nameplates.enable" then
+                -- Already handled above in originalNameplateConfig restoration
             elseif frameName == "API:NamePlates.frame" then
                 -- Restore nameplate frame
                 if ElvUI and ElvUI[1] and ElvUI[1].NamePlates and ElvUI[1].NamePlates.frame then
@@ -881,6 +967,22 @@ function ShowElvUINameplates()
                         frame.originalShow = nil
                         frame:Show()
                     end
+                end
+            elseif frameName == "API:CreatedPlates" then
+                -- Restore created nameplate units
+                if ElvUI and ElvUI[1] and ElvUI[1].NamePlates and ElvUI[1].NamePlates.CreatedPlates then
+                    for plate, _ in pairs(ElvUI[1].NamePlates.CreatedPlates) do
+                        if plate and plate.originalShow then
+                            plate.Show = plate.originalShow
+                            plate.originalShow = nil
+                            plate:Show()
+                        end
+                    end
+                end
+            elseif frameName == "API:Layout.ToggleNameplates" then
+                -- Re-enable nameplates via Layout module
+                if ElvUI and ElvUI[1] and ElvUI[1].Layout and ElvUI[1].Layout.ToggleNameplates then
+                    pcall(ElvUI[1].Layout.ToggleNameplates, ElvUI[1].Layout, true)
                 end
             else
                 -- Handle direct frame references
@@ -894,6 +996,18 @@ function ShowElvUINameplates()
         end
     end
 
+    -- Force a nameplate refresh to ensure changes take effect
+    if ElvUI and ElvUI[1] and ElvUI[1].NamePlates then
+        local NP = ElvUI[1].NamePlates
+        if NP.UpdateAllPlates then
+            pcall(NP.UpdateAllPlates, NP)
+        elseif NP.ConfigureAll then
+            pcall(NP.ConfigureAll, NP)
+        end
+    end
+
+    -- Clear the stored original config
+    elvUIFramesHidden.originalNameplateConfig = nil
     elvUIFramesHidden.nameplates = nil -- Mark as not hidden
 end
 
