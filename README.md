@@ -14,6 +14,7 @@
 
 UltraHardcore is a comprehensive difficulty enhancement addon for MoP Classic that transforms your gameplay experience by removing crucial UI elements, adding visual effects, and implementing hardcore mechanics. This adaptation expands on the original work by [BonniesDad](https://www.curseforge.com/wow/addons/ultra-hardcore) with extensive new features and MoP Classic compatibility.
 
+![UltraHardcore Screenshot2](Screenshot2.png)
 ![UltraHardcore Screenshot](Screenshot.png)
 
 **⚠️ WARNING: This addon significantly increases difficulty and the likelihood of character death. Use at your own risk!**
